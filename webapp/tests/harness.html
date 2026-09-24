@@ -7,7 +7,7 @@ window.registerPlugin=(id,plugin)=>{
  plugin.initialize({
   registerRootComponent: component=>ReactDOM.render(React.createElement(component),document.getElementById('root')),
   registerFileUploadMethod: (icon,action)=>{document.getElementById('record').onclick=()=>action(files=>{window.uploaded=files;});},
-  registerPostDropdownMenuAction: ()=>{}
+  registerPostDropdownMenuAction: (text,action)=>{window.transcribeAction=action;}
  },{getState:()=>window.testState});
 };
 </script><script src="/plugin.js"></script></body></html>

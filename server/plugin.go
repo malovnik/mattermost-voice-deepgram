@@ -38,6 +38,10 @@ func (p *Plugin) OnActivate() error {
 	if err != nil {
 		return fmt.Errorf("create transcription bot: %w", err)
 	}
+	bot, botErr := p.API.GetBot(id, false)
+	if botErr != nil || bot == nil || bot.OwnerId != pluginID {
+		return errors.New("voice-transcriber must be a bot owned by this plugin; resolve the username conflict before activation")
+	}
 	p.botID = id
 	if err := p.API.RegisterCommand(&model.Command{Trigger: "voice", AutoComplete: true, AutoCompleteDesc: "Расшифровать аудио: /voice transcribe POST_ID", AutoCompleteHint: "[transcribe POST_ID]"}); err != nil {
 		return err
@@ -81,12 +85,16 @@ func audioMIME(f *model.FileInfo) string {
 }
 
 func (p *Plugin) firstAudio(post *model.Post, c configuration, manual bool) (*model.FileInfo, error) {
+	return p.findAudio(post, c, manual, false)
+}
+
+func (p *Plugin) findAudio(post *model.Post, c configuration, manual, allowUnattached bool) (*model.FileInfo, error) {
 	for _, id := range post.FileIds {
 		f, err := p.API.GetFileInfo(id)
 		if err != nil {
 			return nil, errors.New("Не удалось прочитать вложение.")
 		}
-		if f.PostId != post.Id || f.DeleteAt != 0 {
+		if (f.PostId != post.Id && !(allowUnattached && f.PostId == "")) || f.DeleteAt != 0 {
 			continue
 		}
 		if audioMIME(f) == "" {
@@ -118,7 +126,7 @@ func (p *Plugin) MessageHasBeenPosted(_ *plugin.Context, post *model.Post) {
 	if c.DeepgramAPIKey == "" {
 		return
 	}
-	if _, err := p.firstAudio(post, c, false); err != nil {
+	if _, err := p.findAudio(post, c, false, true); err != nil {
 		return
 	}
 	if err := p.enqueue(post.Id); err != nil {

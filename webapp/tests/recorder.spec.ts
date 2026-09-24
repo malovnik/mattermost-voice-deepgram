@@ -53,3 +53,8 @@ test('subpath installation calls plugin API below SiteURL path',async({page})=>{
     let requested=false;await page.route('**/teamchat/plugins/**/config',route=>{requested=true;return route.fulfill({json:{configured:true,maxRecordingSeconds:300,maxFileBytes:1024*1024}});});
     await page.goto('/');await page.evaluate(()=>{(window as any).testState.entities.general.config.SiteURL=location.origin+'/teamchat';});await page.getByRole('button',{name:'Голосовое сообщение',exact:true}).click();await expect(page.getByRole('dialog')).toBeVisible();expect(requested).toBe(true);
 });
+test('manual transcription forwards Mattermost CSRF cookie',async({page})=>{
+    let csrf='';await page.route('**/plugins/**/transcribe',route=>{csrf=route.request().headers()['x-csrf-token'];return route.fulfill({status:202,json:{ok:true}});});
+    await page.goto('/');await page.evaluate(()=>{document.cookie='MMCSRF=smoke-csrf; path=/';(window as any).transcribeAction('source-post');});
+    await expect(page.getByRole('status')).toContainText('Запрос принят');expect(csrf).toBe('smoke-csrf');
+});

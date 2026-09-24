@@ -31,7 +31,7 @@ const {data:files}=await api('/api/v4/files','POST',upload,true);
 const {data:post}=await api('/api/v4/posts','POST',{channel_id:channel.id,message:'Audio works without a provider key',file_ids:[files.file_infos[0].id]});
 const {data:info}=await api(`/api/v4/files/${files.file_infos[0].id}/info`);assert.equal(info.post_id,post.id);
 const file=await fetch(`${base}/api/v4/files/${info.id}`,{headers:{Authorization:`Bearer ${token}`}});assert.equal((await file.arrayBuffer()).byteLength,wave.length);
-const {data:command}=await api('/api/v4/commands/execute','POST',{channel_id:channel.id,command:`/voice transcribe ${post.id}`});assert(command.response.text.includes('ключ Deepgram'));
+const {data:command}=await api('/api/v4/commands/execute','POST',{channel_id:channel.id,command:`/voice transcribe ${post.id}`});assert(command.text.includes('ключ Deepgram'));
 console.log('PASS: Mattermost 10.11 installation, activation, bot, command, auth, secret-free config, native upload/post/download, no-key behavior.');
 
 // Connect to an isolated TLS stub using the production hostname and real binary.

@@ -54,8 +54,26 @@ func (p *Plugin) OnConfigurationChange() error {
 		return err
 	}
 	c.DeepgramAPIKey = strings.TrimSpace(c.DeepgramAPIKey)
-	if err := c.validate(); err != nil {
-		return err
+	c.MaxFileSizeMB = strings.TrimSpace(c.MaxFileSizeMB)
+	c.MaxRecordingSeconds = strings.TrimSpace(c.MaxRecordingSeconds)
+	defaults := defaultConfiguration()
+	// Mattermost persists settings before this hook: invalid text must not brick activation.
+	if n, e := strconv.Atoi(c.MaxFileSizeMB); e != nil || n < 1 || n > 50 {
+		p.API.LogWarn("Invalid MaxFileSizeMB; using default 25 MiB")
+		c.MaxFileSizeMB = defaults.MaxFileSizeMB
+	}
+	if n, e := strconv.Atoi(c.MaxRecordingSeconds); e != nil || n < 10 || n > 600 {
+		p.API.LogWarn("Invalid MaxRecordingSeconds; using default 300 seconds")
+		c.MaxRecordingSeconds = defaults.MaxRecordingSeconds
+	}
+	if c.DeepgramRegion != "global" && c.DeepgramRegion != "eu" {
+		c.DeepgramRegion = defaults.DeepgramRegion
+	}
+	if c.Model != "nova-3" && c.Model != "nova-2" {
+		c.Model = defaults.Model
+	}
+	if c.Language != "ru" && c.Language != "en" && c.Language != "auto" {
+		c.Language = defaults.Language
 	}
 	p.configMu.Lock()
 	p.configuration = c

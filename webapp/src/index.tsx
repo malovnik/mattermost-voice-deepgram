@@ -50,7 +50,8 @@ export class Plugin {
         }, 'Голосовое сообщение');
         registry.registerPostDropdownMenuAction('Расшифровать аудио', async (postId) => {
             try {
-                const response = await fetch(`${basePath(store)}/plugins/${ID}/transcribe`, {method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json','X-Requested-With':'XMLHttpRequest'},body:JSON.stringify({post_id:postId})});
+                const csrf = document.cookie.match(/(?:^|;\s*)MMCSRF=([^;]+)/)?.[1] || '';
+                const response = await fetch(`${basePath(store)}/plugins/${ID}/transcribe`, {method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json','X-Requested-With':'XMLHttpRequest','X-CSRF-Token':csrf},body:JSON.stringify({post_id:postId})});
                 const result = await response.json();
                 this.show?.(undefined, response.ok ? 'Запрос принят. Расшифровка появится в ветке сообщения.' : result.error || 'Не удалось запустить расшифровку.');
             } catch { this.show?.(undefined, 'Нет связи с сервером. Повторите запрос позже.'); }

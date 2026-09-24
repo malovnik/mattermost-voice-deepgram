@@ -104,7 +104,13 @@ func (p *Plugin) process(key string) {
 	if e != nil || !ok {
 		return
 	}
-	err := p.perform(j, key, held)
+	// Delivery failures must never turn into unlimited paid provider requests.
+	var err error
+	if j.Attempts <= 3 {
+		err = p.perform(j, key, held)
+	} else {
+		err = dgError("delivery_failed", false)
+	}
 	if p.ctx.Err() != nil {
 		// Graceful restart preserves work and does not consume a provider retry.
 		j.Next = 0
@@ -123,6 +129,11 @@ func (p *Plugin) process(key string) {
 	if err != nil {
 		// A failed notification leaves the job recoverable; do not silently drop a task.
 		if e := p.publishResult(j.PostID, "", err, key, held); e != nil {
+			if j.Attempts >= 6 {
+				p.API.LogWarn("Voice job exhausted delivery retries; author can retry manually", "post_id", j.PostID)
+				_, _ = p.API.KVCompareAndDelete(key, held)
+				return
+			}
 			j.Next = time.Now().Add(5 * time.Minute).Unix()
 			j.Lease = ""
 			_, _ = p.API.KVCompareAndSet(key, held, encodeJob(j))
@@ -141,9 +152,7 @@ func (p *Plugin) owns(key string, held []byte) bool {
 func (p *Plugin) usablePost(id string) (*model.Post, error) {
 	post, e := p.API.GetPost(id)
 	if e != nil {
-		if e.StatusCode == 404 {
-			return nil, nil
-		}
+		// A just-created post can be absent on an HA read replica. Retry within the same bound.
 		return nil, dgError("mattermost_unavailable", true)
 	}
 	if post.DeleteAt != 0 || !p.canRead(post.UserId, post.ChannelId) {
@@ -190,7 +199,7 @@ func (p *Plugin) perform(j job, key string, held []byte) error {
 	}
 	f, err := p.firstAudio(post, c, true)
 	if err != nil {
-		return dgError("audio_unavailable", false)
+		return dgError("audio_unavailable", true)
 	}
 	data, e := p.API.GetFile(f.Id)
 	if e != nil {

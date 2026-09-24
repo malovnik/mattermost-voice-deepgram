@@ -20,14 +20,16 @@ import (
 // Unexpected API calls panic rather than silently succeeding.
 type fakeAPI struct {
 	plugin.API
-	mu       sync.Mutex
-	kv       map[string][]byte
-	posts    map[string]*model.Post
-	file     *model.FileInfo
-	member   bool
-	archived bool
-	reads    int
-	creates  int
+	mu          sync.Mutex
+	kv          map[string][]byte
+	posts       map[string]*model.Post
+	file        *model.FileInfo
+	member      bool
+	archived    bool
+	reads       int
+	creates     int
+	createFails bool
+	settings    map[string]string
 }
 
 func (f *fakeAPI) KVCompareAndSet(k string, old, new []byte) (bool, *model.AppError) {
@@ -91,6 +93,9 @@ func (f *fakeAPI) GetPostThread(id string) (*model.PostList, *model.AppError) {
 	return list, nil
 }
 func (f *fakeAPI) CreatePost(p *model.Post) (*model.Post, *model.AppError) {
+	if f.createFails {
+		return nil, model.NewAppError("test", "rejected", nil, "", 400)
+	}
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	p = p.Clone()
@@ -98,6 +103,63 @@ func (f *fakeAPI) CreatePost(p *model.Post) (*model.Post, *model.AppError) {
 	f.posts[p.Id] = p
 	f.creates++
 	return p.Clone(), nil
+}
+
+func (f *fakeAPI) LogWarn(string, ...any) {}
+func (f *fakeAPI) LoadPluginConfiguration(dest any) error {
+	b, _ := json.Marshal(f.settings)
+	return json.Unmarshal(b, dest)
+}
+
+func TestDeliveryFailureCannotChargeForever(t *testing.T) {
+	p, f, post := fixture(t)
+	f.createFails = true
+	calls := 0
+	p.client.Transport = transportFunc(func(*http.Request) (*http.Response, error) { calls++; return response(200, goodResponse), nil })
+	_ = p.enqueue(post.Id)
+	for attempt := 1; attempt <= 6; attempt++ {
+		p.process(jobPrefix + post.Id)
+		if attempt < 6 {
+			var j job
+			_ = json.Unmarshal(f.kv[jobPrefix+post.Id], &j)
+			j.Next = 0
+			f.kv[jobPrefix+post.Id] = encodeJob(j)
+		}
+	}
+	if calls != 3 || len(f.kv) != 0 {
+		t.Fatalf("calls=%d jobs=%d", calls, len(f.kv))
+	}
+}
+func TestBadAdminNumericSettingsDoNotBrickActivation(t *testing.T) {
+	p, f, _ := fixture(t)
+	f.settings = map[string]string{"MaxFileSizeMB": " 30 ", "MaxRecordingSeconds": "oops"}
+	if err := p.OnConfigurationChange(); err != nil {
+		t.Fatal(err)
+	}
+	if p.config().maxBytes() != 30*1024*1024 || p.config().seconds() != 300 {
+		t.Fatal("missing safe defaults")
+	}
+}
+func TestAttachmentReplicaLagCanRecover(t *testing.T) {
+	p, f, post := fixture(t)
+	f.file.PostId = ""
+	p.MessageHasBeenPosted(nil, post)
+	if len(f.kv) != 1 {
+		t.Fatal("hook lost an unreplicated attachment")
+	}
+	p.process(jobPrefix + post.Id)
+	if f.reads != 0 {
+		t.Fatal("unattached file read")
+	}
+	var j job
+	_ = json.Unmarshal(f.kv[jobPrefix+post.Id], &j)
+	j.Next = 0
+	f.kv[jobPrefix+post.Id] = encodeJob(j)
+	f.file.PostId = post.Id
+	p.process(jobPrefix + post.Id)
+	if f.creates != 1 {
+		t.Fatal("attachment did not recover")
+	}
 }
 func (f *fakeAPI) UpdatePost(p *model.Post) (*model.Post, *model.AppError) {
 	f.mu.Lock()
