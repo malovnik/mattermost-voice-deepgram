@@ -33,3 +33,34 @@ const {data:info}=await api(`/api/v4/files/${files.file_infos[0].id}/info`);asse
 const file=await fetch(`${base}/api/v4/files/${info.id}`,{headers:{Authorization:`Bearer ${token}`}});assert.equal((await file.arrayBuffer()).byteLength,wave.length);
 const {data:command}=await api('/api/v4/commands/execute','POST',{channel_id:channel.id,command:`/voice transcribe ${post.id}`});assert(command.response.text.includes('ключ Deepgram'));
 console.log('PASS: Mattermost 10.11 installation, activation, bot, command, auth, secret-free config, native upload/post/download, no-key behavior.');
+
+// Connect to an isolated TLS stub using the production hostname and real binary.
+// The CI Docker network resolves this name locally. No audio or key reaches Deepgram.
+await api('/api/v4/config/patch','PUT',{PluginSettings:{Plugins:{[manifest.id]:{deepgramapikey:'ci-test-only'}}}});
+async function replyFor(source,status='done'){
+ for(let i=0;i<45;i++){
+  const {data:thread}=await api(`/api/v4/posts/${source.id}/thread`);
+  const reply=Object.values(thread.posts).find(p=>p.props?.voice_source_post_id===source.id&&p.props?.voice_status===status);
+  if(reply){return reply;}await new Promise(resolve=>setTimeout(resolve,1000));
+ }
+ throw new Error(`No ${status} reply for test post`);
+}
+async function sendAudio(destination,root=''){
+ const data=new FormData();data.set('channel_id',destination);data.set('files',new Blob([wave],{type:'audio/wav'}),'voice-message-smoke.wav');
+ const upload=await api('/api/v4/files','POST',data,true);
+ return (await api('/api/v4/posts','POST',{channel_id:destination,root_id:root,message:'CI voice test',file_ids:[upload.data.file_infos[0].id]})).data;
+}
+const automatic=await sendAudio(channel.id);
+const transcript=await replyFor(automatic);assert.equal(transcript.root_id,automatic.id);assert(transcript.message.includes('Привет, команда'));assert(!transcript.message.includes('@channel'));
+const nested=await sendAudio(channel.id,automatic.id);const nestedReply=await replyFor(nested);assert.equal(nestedReply.root_id,automatic.id);
+const {data:other}=await api('/api/v4/users','POST',{email:'voice-other@example.test',username:'voice-other',password:'Other-'+randomUUID()+'!aA1'});
+const {data:dm}=await api('/api/v4/channels/direct','POST',[user.id,other.id]);const dmPost=await sendAudio(dm.id);assert.equal((await replyFor(dmPost)).channel_id,dm.id);
+const stats=await(await fetch('http://localhost:8090')).json();assert.equal(stats.calls,3);assert.deepEqual(stats.errors,[]);
+await api('/api/v4/commands/execute','POST',{channel_id:channel.id,command:`/voice transcribe ${automatic.id}`});
+await new Promise(resolve=>setTimeout(resolve,1500));assert.equal((await(await fetch('http://localhost:8090')).json()).calls,3);
+await fetch('http://localhost:8090',{method:'POST',body:JSON.stringify({failure:401})});
+const failed=await sendAudio(channel.id);const failureReply=await replyFor(failed,'failed');assert(!failureReply.message.includes('private provider detail'));
+await fetch('http://localhost:8090',{method:'POST',body:JSON.stringify({failure:0})});
+await api('/api/v4/commands/execute','POST',{channel_id:channel.id,command:`/voice transcribe ${failed.id}`});
+const retried=await replyFor(failed);assert.equal(retried.id,failureReply.id);
+console.log('PASS: Real Mattermost hook → durable queue → HTTPS Deepgram contract stub → bot reply, DM/thread routing, deduplication, 401 failure and manual recovery.');

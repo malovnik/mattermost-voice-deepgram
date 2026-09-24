@@ -28,9 +28,13 @@ jobs:
       - name: Install and exercise on real Mattermost 10.11
         run: |
           docker network create voice-test
+          mkdir -p /tmp/voice-test-cert
+          openssl req -x509 -newkey rsa:2048 -nodes -days 1 -keyout /tmp/voice-test-cert/key.pem -out /tmp/voice-test-cert/cert.pem -subj '/CN=api.deepgram.com' -addext 'subjectAltName=DNS:api.deepgram.com'
+          docker run -d --name voice-deepgram --network voice-test --network-alias api.deepgram.com -p 8090:8090 -v /tmp/voice-test-cert:/cert:ro -v "$PWD/scripts/deepgram-stub.mjs:/stub.mjs:ro" node:22-alpine node /stub.mjs
           docker run -d --name voice-db --network voice-test -e POSTGRES_USER=mm -e POSTGRES_PASSWORD=ci-only-local -e POSTGRES_DB=mattermost postgres:16
           for i in $(seq 1 30); do docker exec voice-db pg_isready -U mm && break; sleep 2; done
           docker run -d --name voice-mm --network voice-test -p 8065:8065 \
+            -v /tmp/voice-test-cert/cert.pem:/tmp/voice-test-ca.pem:ro -e SSL_CERT_FILE=/tmp/voice-test-ca.pem \
             -e MM_SQLSETTINGS_DRIVERNAME=postgres \
             -e 'MM_SQLSETTINGS_DATASOURCE=postgres://mm:ci-only-local@voice-db:5432/mattermost?sslmode=disable&connect_timeout=10' \
             -e MM_SERVICESETTINGS_SITEURL=http://localhost:8065 \
