@@ -1,0 +1,9 @@
+node_modules/
+dist/
+server/dist/
+webapp/dist/
+coverage/
+test-results/
+.env*
+*.log
+.DS_Store

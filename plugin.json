@@ -1,0 +1,25 @@
+{
+  "id": "com.malovnik.voice-deepgram",
+  "name": "Voice Messages · Deepgram",
+  "description": "Record voice messages and transcribe audio attachments with Deepgram. Audio is sent to Deepgram only after posting.",
+  "version": "0.1.0",
+  "min_server_version": "10.11.0",
+  "homepage_url": "https://github.com/malovnik/mattermost-voice-deepgram",
+  "support_url": "https://github.com/malovnik/mattermost-voice-deepgram/issues",
+  "icon_path": "assets/icon.svg",
+  "server": {"executables": {"linux-amd64": "server/dist/plugin-linux-amd64", "linux-arm64": "server/dist/plugin-linux-arm64"}},
+  "webapp": {"bundle_path": "webapp/dist/main.js"},
+  "settings_schema": {
+    "header": "Запись работает без ключа. Для расшифровки опубликованное аудио отправляется в Deepgram; текст появляется в той же ветке. Никакие черновики не отправляются в Deepgram.",
+    "footer": "Новые сообщения обрабатываются автоматически после добавления ключа. Для старых: /voice transcribe POST_ID. Ключ доступен только серверу. Подробности — README в репозитории.",
+    "settings": [
+      {"key": "DeepgramAPIKey", "display_name": "Deepgram API key", "type": "text", "secret": true, "help_text": "Ключ проекта Deepgram с правом распознавания. Не публикуйте его в каналах.", "default": ""},
+      {"key": "DeepgramRegion", "display_name": "Deepgram endpoint", "type": "dropdown", "default": "global", "options": [{"display_name": "Global — api.deepgram.com", "value": "global"}, {"display_name": "EU — api.eu.deepgram.com", "value": "eu"}]},
+      {"key": "Model", "display_name": "Модель", "type": "dropdown", "default": "nova-3", "options": [{"display_name": "Nova-3", "value": "nova-3"}, {"display_name": "Nova-2", "value": "nova-2"}]},
+      {"key": "Language", "display_name": "Язык", "type": "dropdown", "default": "ru", "options": [{"display_name": "Русский", "value": "ru"}, {"display_name": "English", "value": "en"}, {"display_name": "Автоопределение", "value": "auto"}]},
+      {"key": "TranscribeAllAudio", "display_name": "Обрабатывать загруженные аудиофайлы", "type": "bool", "default": true, "help_text": "Включено: аудиовложения из любого клиента, включая мобильный. Выключено: только файлы voice-message-*.webm/.ogg/.m4a из рекордера. Обрабатывается первое аудиовложение в сообщении."},
+      {"key": "MaxFileSizeMB", "display_name": "Максимальный размер аудио, МиБ", "type": "text", "default": "25", "help_text": "От 1 до 50 МиБ. Большие файлы не отправляются в Deepgram."},
+      {"key": "MaxRecordingSeconds", "display_name": "Максимальная запись, секунд", "type": "text", "default": "300", "help_text": "От 10 до 600 секунд. Ограничение браузерного рекордера; длительность внешних файлов им не ограничивается."}
+    ]
+  }
+}

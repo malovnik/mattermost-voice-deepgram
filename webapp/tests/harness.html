@@ -1,0 +1,13 @@
+<!doctype html><html lang="ru"><meta charset="utf-8"><title>Mattermost plugin host contract harness</title><body style="font-family:Arial,sans-serif;background:#eff1f5">
+<h1>Тестовый host Mattermost</h1><button id="record">Голосовое сообщение</button><div id="root"></div>
+<script src="/react.js"></script><script src="/react-dom.js"></script><script>
+window.testState={entities:{channels:{currentChannelId:'channel-a'},general:{config:{SiteURL:location.origin}},users:{currentUserId:'user-a'},posts:{posts:{}}},views:{rhs:{selectedPostId:''}}};
+window.registerPlugin=(id,plugin)=>{
+ window.testPlugin=plugin;
+ plugin.initialize({
+  registerRootComponent: component=>ReactDOM.render(React.createElement(component),document.getElementById('root')),
+  registerFileUploadMethod: (icon,action)=>{document.getElementById('record').onclick=()=>action(files=>{window.uploaded=files;});},
+  registerPostDropdownMenuAction: ()=>{}
+ },{getState:()=>window.testState});
+};
+</script><script src="/plugin.js"></script></body></html>

@@ -1,0 +1,51 @@
+name: Verify and package
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: webapp/package-lock.json
+      - run: npm ci --prefix webapp
+      - run: cd webapp && npx playwright install --with-deps chromium
+      - run: make test
+      - run: go vet ./server
+      - run: make bundle
+      - name: Install and exercise on real Mattermost 10.11
+        run: |
+          docker network create voice-test
+          docker run -d --name voice-db --network voice-test -e POSTGRES_USER=mm -e POSTGRES_PASSWORD=ci-only-local -e POSTGRES_DB=mattermost postgres:16
+          for i in $(seq 1 30); do docker exec voice-db pg_isready -U mm && break; sleep 2; done
+          docker run -d --name voice-mm --network voice-test -p 8065:8065 \
+            -e MM_SQLSETTINGS_DRIVERNAME=postgres \
+            -e 'MM_SQLSETTINGS_DATASOURCE=postgres://mm:ci-only-local@voice-db:5432/mattermost?sslmode=disable&connect_timeout=10' \
+            -e MM_SERVICESETTINGS_SITEURL=http://localhost:8065 \
+            -e MM_SERVICESETTINGS_ENABLEBOTACCOUNTCREATION=true \
+            -e MM_PLUGINSETTINGS_ENABLE=true -e MM_PLUGINSETTINGS_ENABLEUPLOADS=true \
+            -e MM_EMAILSETTINGS_SENDEMAILNOTIFICATIONS=false \
+            -e MM_EMAILSETTINGS_REQUIREEMAILVERIFICATION=false \
+            mattermost/mattermost-team-edition:10.11.0
+          for i in $(seq 1 90); do if curl -fsS http://localhost:8065/api/v4/system/ping >/dev/null; then break; fi; sleep 2; done
+          node scripts/live-smoke.mjs
+      - name: Mattermost diagnostics on failure
+        if: failure()
+        run: docker logs voice-mm --tail 80 || true
+      - uses: actions/upload-artifact@v4
+        with:
+          name: mattermost-voice-deepgram
+          path: dist/*
+          if-no-files-found: error

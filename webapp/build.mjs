@@ -1,0 +1,2 @@
+import {build} from 'esbuild';
+await build({entryPoints:['src/index.tsx'],bundle:true,minify:true,format:'iife',target:['chrome100','firefox100','safari15.4'],outfile:'dist/main.js',plugins:[{name:'mattermost-react',setup(b){b.onResolve({filter:/^react$/},()=>({path:'react',namespace:'mm'}));b.onLoad({filter:/.*/,namespace:'mm'},()=>({contents:'module.exports = window.React;',loader:'js'}));}}]});
